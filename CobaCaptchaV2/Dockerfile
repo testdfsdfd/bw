@@ -1,30 +1,38 @@
-FROM python:3.11-slim
+# Base image with Python
+FROM python:3.13-slim
 
-ENV DEBIAN_FRONTEND=noninteractive
-
-# Install Firefox & dependencies
-RUN apt-get update && apt-get install -y \
-    firefox-esr \
-    ca-certificates \
-    wget \
-    gnupg \
-    --no-install-recommends && \
-    rm -rf /var/lib/apt/lists/*
+# Install Firefox, Xvfb, and dependencies
+RUN apt-get update && \
+    apt-get install -y \
+        firefox \
+        wget \
+        gnupg \
+        libgtk-3-0 \
+        libdbus-glib-1-2 \
+        libdbus-1-3 \
+        libxt6 \
+        libx11-xcb1 \
+        libdrm2 \
+        libxcomposite1 \
+        libxdamage1 \
+        libxrandr2 \
+        libasound2 \
+        fonts-liberation \
+        libnss3 \
+        libnspr4 \
+        xvfb \
+        x11-utils \
+        && rm -rf /var/lib/apt/lists/*
 
 # Set workdir
 WORKDIR /app
 
-# Copy dependencies
-COPY requirements.txt /app/
-RUN pip install --no-cache-dir -r requirements.txt
-
 # Copy project files
 COPY . /app
 
-# Create non-root user
-RUN useradd --create-home appuser
-USER appuser
-ENV HOME=/home/appuser
+# Install Python dependencies
+RUN pip install --no-cache-dir --upgrade pip
+RUN pip install --no-cache-dir -r requirements.txt
 
-# Run the script
-CMD ["python", "Firefox.py"]
+# Command to start Xvfb and your Python script
+CMD ["sh", "-c", "Xvfb :99 -screen 0 1920x1080x24 & export DISPLAY=:99 && python Firefox.py"]
