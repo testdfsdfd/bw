@@ -1,0 +1,8 @@
+services:
+  - type: worker
+    name: coba-captcha-v2
+    env: docker
+    plan: free          # or 'starter', 'standard', etc.
+    autoDeploy: true
+    buildCommand: ""    # Docker handles build
+    startCommand: ""    # CMD from Dockerfile runs automatically

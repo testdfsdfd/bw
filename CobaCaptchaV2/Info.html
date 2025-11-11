@@ -1,0 +1,208 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8"/>
+<title>Ultimate Browser / Device / Network Info</title>
+<style>
+body { font-family: Consolas, monospace; background:#0d1117; color:#e6edf3; padding:20px; }
+h1,h2 { color:#58a6ff; }
+pre { background:#161b22; padding:10px; border-radius:6px; overflow:auto; }
+button { background:#238636; color:white; border:none; padding:6px 10px; border-radius:4px; cursor:pointer; margin-top:4px; }
+button:hover { background:#2ea043; }
+small { color:#8b949e; }
+</style>
+</head>
+<body>
+<h1>🧠 Ultimate Browser / Device / Network Info</h1>
+<p><small>Everything your browser can reveal via JavaScript — runs entirely client-side.</small></p>
+
+<div id="info"></div>
+
+<script>
+function pretty(obj){ return JSON.stringify(obj, null, 2); }
+
+async function gatherAll(){
+  const results = {};
+
+  // --- Basic Navigator info ---
+  const n = navigator;
+  results.navigator = {
+    userAgent: n.userAgent,
+    userAgentData: n.userAgentData ? {
+      brands: n.userAgentData.brands,
+      mobile: n.userAgentData.mobile,
+      platform: n.userAgentData.platform
+    } : null,
+    appVersion: n.appVersion,
+    platform: n.platform,
+    language: n.language,
+    languages: n.languages,
+    vendor: n.vendor,
+    hardwareConcurrency: n.hardwareConcurrency,
+    deviceMemory: n.deviceMemory || 'n/a',
+    maxTouchPoints: n.maxTouchPoints,
+    doNotTrack: n.doNotTrack,
+    webdriver: n.webdriver,
+    cookieEnabled: n.cookieEnabled,
+    onLine: n.onLine,
+    productSub: n.productSub
+  };
+
+  // --- Screen & Window ---
+  results.screen = {
+    width: screen.width,
+    height: screen.height,
+    availWidth: screen.availWidth,
+    availHeight: screen.availHeight,
+    colorDepth: screen.colorDepth,
+    pixelDepth: screen.pixelDepth,
+    orientation: (screen.orientation && screen.orientation.type) || 'n/a',
+    innerWidth: innerWidth,
+    innerHeight: innerHeight,
+    devicePixelRatio: devicePixelRatio
+  };
+
+  // --- Time / Locale ---
+  results.time = {
+    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    locale: navigator.language,
+    offsetMinutes: new Date().getTimezoneOffset(),
+    dateString: new Date().toString()
+  };
+
+  // --- Connection ---
+  const c = n.connection || n.mozConnection || n.webkitConnection;
+  results.connection = c ? {
+    effectiveType: c.effectiveType,
+    downlink: c.downlink,
+    rtt: c.rtt,
+    saveData: c.saveData
+  } : "Network Information API not available";
+
+  // --- Battery ---
+  try{
+    const b = await navigator.getBattery();
+    results.battery = {
+      charging: b.charging,
+      level: b.level,
+      chargingTime: b.chargingTime,
+      dischargingTime: b.dischargingTime
+    };
+  }catch{ results.battery = "Battery API not supported or denied."; }
+
+  // --- Permissions status ---
+  const permList = ["geolocation","notifications","push","camera","microphone","clipboard-read","clipboard-write"];
+  results.permissions = {};
+  for(const p of permList){
+    try{
+      const st = await navigator.permissions.query({name:p});
+      results.permissions[p] = st.state;
+    }catch{ results.permissions[p] = "unsupported"; }
+  }
+
+  // --- Storage ---
+  try{
+    const est = await navigator.storage.estimate();
+    results.storage = {
+      quotaMB: (est.quota/1048576).toFixed(2),
+      usageMB: (est.usage/1048576).toFixed(2),
+      persistent: await navigator.storage.persisted()
+    };
+  }catch{ results.storage = "Storage API not supported"; }
+
+  // --- Media devices ---
+  try{
+    const devs = await navigator.mediaDevices.enumerateDevices();
+    results.mediaDevices = devs.map(d=>({kind:d.kind, label:d.label, deviceId:d.deviceId}));
+  }catch{ results.mediaDevices = "Cannot list media devices (permission denied or unsupported)."; }
+
+  // --- Canvas fingerprint ---
+  try{
+    const c = document.createElement('canvas');
+    const ctx = c.getContext('2d');
+    ctx.textBaseline = "top";
+    ctx.font = "16px 'Arial'";
+    ctx.fillStyle = "#f60";
+    ctx.fillRect(125,1,62,20);
+    ctx.fillStyle = "#069";
+    ctx.fillText("canvas-fingerprint", 2, 15);
+    ctx.fillStyle = "rgba(102, 204, 0, 0.7)";
+    ctx.fillText("canvas-fingerprint", 4, 17);
+    const data = c.toDataURL();
+    let hash = 0;
+    for (let i = 0; i < data.length; i++)
+      hash = (hash << 5) - hash + data.charCodeAt(i), hash |= 0;
+    results.canvasFingerprint = {hash, length:data.length};
+  }catch{ results.canvasFingerprint = "Canvas fingerprinting blocked."; }
+
+  // --- WebGL fingerprint ---
+  try{
+    const canvas = document.createElement('canvas');
+    const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+    const dbg = gl.getExtension('WEBGL_debug_renderer_info');
+    results.webgl = {
+      vendor: gl.getParameter(dbg.UNMASKED_VENDOR_WEBGL),
+      renderer: gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL),
+      shadingLanguageVersion: gl.getParameter(gl.SHADING_LANGUAGE_VERSION),
+      version: gl.getParameter(gl.VERSION),
+      maxTextureSize: gl.getParameter(gl.MAX_TEXTURE_SIZE),
+      maxViewportDims: gl.getParameter(gl.MAX_VIEWPORT_DIMS)
+    };
+  }catch{ results.webgl = "WebGL blocked or unsupported."; }
+
+  // --- Audio fingerprint ---
+  try{
+    const ctx = new (window.OfflineAudioContext || window.webkitOfflineAudioContext)(1, 44100, 44100);
+    const osc = ctx.createOscillator();
+    const comp = ctx.createDynamicsCompressor();
+    osc.type = "triangle";
+    osc.connect(comp);
+    comp.connect(ctx.destination);
+    osc.start(0);
+    const buffer = await ctx.startRendering();
+    let sum = 0;
+    const data = buffer.getChannelData(0);
+    for (let i=0;i<data.length;i++) sum += Math.abs(data[i]);
+    results.audioFingerprint = sum.toString(16);
+  }catch{ results.audioFingerprint = "AudioContext fingerprint blocked."; }
+
+  // --- WebRTC ICE (local & public IPs) ---
+  results.webRTC = await new Promise(resolve=>{
+    const ips = new Set();
+    try{
+      const pc = new RTCPeerConnection({iceServers:[{urls:"stun:stun.l.google.com:19302"}]});
+      pc.createDataChannel("x");
+      pc.onicecandidate = (ev)=>{
+        if(!ev.candidate){ pc.close(); resolve(Array.from(ips)); return; }
+        const ipRegex = /([0-9]{1,3}(?:\.[0-9]{1,3}){3}|[A-F0-9:]+)/ig;
+        let m; while((m = ipRegex.exec(ev.candidate.candidate)) !== null) ips.add(m[0]);
+      };
+      pc.createOffer().then(o=>pc.setLocalDescription(o));
+      setTimeout(()=>resolve(Array.from(ips)), 4000);
+    }catch{ resolve(["WebRTC blocked"]); }
+  });
+
+  // --- Cookies / Storage sample ---
+  try{
+    localStorage.testItem = "ok";
+    sessionStorage.testItem = "ok";
+    results.storageTest = {
+      localStorage: localStorage.testItem || "fail",
+      sessionStorage: sessionStorage.testItem || "fail"
+    };
+  }catch{ results.storageTest = "Storage blocked"; }
+
+  // --- Public IP via ipify ---
+  try{
+    const ip = await fetch("https://api.ipify.org?format=json",{cache:"no-store"});
+    const j = await ip.json();
+    results.publicIP = j.ip;
+  }catch{ results.publicIP = "Could not fetch public IP (blocked or offline)"; }
+
+  document.getElementById("info").innerHTML = "<pre>"+pretty(results)+"</pre>";
+}
+
+gatherAll();
+</script>
+</body>
+</html>
